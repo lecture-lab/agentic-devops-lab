@@ -1,0 +1,83 @@
+name: oidc-sub-probe
+
+# Prints only the sub / aud / iss claims of the GitHub-issued OIDC token,
+# so you can see exactly what an AWS IAM trust policy would have to match.
+# - No external actions, no AWS calls.
+# - The raw token and its signature are never printed.
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  no-environment:
+    name: OIDC claims (no environment)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print sub, aud, iss
+        shell: bash
+        env:
+          OIDC_AUDIENCE: sts.amazonaws.com
+        run: |
+          set -euo pipefail
+          set +x
+
+          # Fetch the token straight into a variable; never echo it.
+          jwt="$(curl -sSf \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}" \
+            | jq -r '.value')"
+
+          # Keep only the payload segment (header.PAYLOAD.signature).
+          payload="${jwt#*.}"
+          payload="${payload%%.*}"
+          unset jwt
+
+          # base64url -> base64 with padding, then decode.
+          payload="$(printf '%s' "$payload" | tr '_-' '/+')"
+          case $(( ${#payload} % 4 )) in
+            2) payload="${payload}==" ;;
+            3) payload="${payload}=" ;;
+          esac
+
+          printf '%s' "$payload" | base64 -d | jq '{sub, aud, iss}'
+          unset payload
+
+  probe-environment:
+    name: OIDC claims (environment=probe)
+    runs-on: ubuntu-latest
+    environment: probe
+    steps:
+      - name: Print sub, aud, iss
+        shell: bash
+        env:
+          OIDC_AUDIENCE: sts.amazonaws.com
+        run: |
+          set -euo pipefail
+          set +x
+
+          # Fetch the token straight into a variable; never echo it.
+          jwt="$(curl -sSf \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}" \
+            | jq -r '.value')"
+
+          # Keep only the payload segment (header.PAYLOAD.signature).
+          payload="${jwt#*.}"
+          payload="${payload%%.*}"
+          unset jwt
+
+          # base64url -> base64 with padding, then decode.
+          payload="$(printf '%s' "$payload" | tr '_-' '/+')"
+          case $(( ${#payload} % 4 )) in
+            2) payload="${payload}==" ;;
+            3) payload="${payload}=" ;;
+          esac
+
+          printf '%s' "$payload" | base64 -d | jq '{sub, aud, iss}'
+          unset payload
